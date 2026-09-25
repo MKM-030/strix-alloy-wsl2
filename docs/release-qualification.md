@@ -2,6 +2,10 @@
 
 Status: **initial experimental package, qualified on the development machine on 25 September 2026**. Portable installation, real answers, API serving, interruption, normal expiry and rollback were exercised below. This is not a fresh Windows/WSL installation or a universal support claim.
 
+**Later incident, same day:** a separate three-full-260k research run with a lower 12 GiB stop threshold froze Windows and required a hard power cycle. The guard's exact-container stop timed out; clean recovery was not verified. The earlier successful cleanup below is a different run. Neither this three-context mode nor the successful two-full-context research mode is installed by the public package. **Guards are not hard host-memory protection.** [Incident, successful pair and raw evidence](benchmarks/parallel260k-20260925.md).
+
+The later publication update changes documentation and adds sanitized evidence plus an offline recount tool; it does not change the 38-file frozen executable package. Post-incident checks are Windows CPU-only: 67 Python tests discovered, 47 passed and 20 Linux-only tests skipped; PowerShell controller/argument round-trip passed, as did both offline native-token recounts. Independent publication review found no remaining critical or important issues. The earlier Linux and live-inference results below are historical, not rerun after the freeze.
+
 ## Already measured
 
 - Native sources compiled with GCC 13.3 and reproduced pinned adapter hashes.

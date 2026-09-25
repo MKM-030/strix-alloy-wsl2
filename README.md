@@ -1,150 +1,71 @@
 # Strix Alloy WSL2
 
-**Independent extension for Peonist AI's Halogen on Windows: experimental WSL2 support for AMD Strix Halo.** Keep Windows as your everyday desktop while running Qwen 3.8 Flash Next locally in WSL2—no dual boot.
+## Halogen numbers, but on Windows
 
-This is an unofficial compatibility layer, **not a replacement AMD driver**, not a 120 GB VRAM unlock, and not affiliated with or endorsed by Peonist, AMD, Microsoft, Qwen or OpenAI. [Upstream explicitly excludes WSL2](https://github.com/peonist-ai/halogen-flash-server/blob/235dbbe143243bd676abe1ede4a57340c750c94e/README.md); our adaptation does not change upstream's support policy.
+**Independent extension for Peonist AI's Halogen on Windows (experimental WSL2 support).** Run Qwen 3.8 Flash Next on a 128 GiB Strix Halo PC while keeping your Windows desktop—no dual boot.
 
-## What actually works
+Similar-order decode to published Halogen Linux results; prefill still trails. **Not a matched Linux/Windows parity claim.** Upstream [does not support WSL2](https://github.com/peonist-ai/halogen-flash-server#the-host-settings-these-numbers-were-measured-on); this is our unofficial adaptation, not an endorsed release.
 
-On one 128 GiB Ryzen AI Max+ 395 / Radeon 8060S Windows PC:
+> **Experimental, not an unattended service.** A three-full-260k lab test froze the entire PC and required a hard power cycle. Its memory guard could not stop the allocation in time. That profile is not shipped; do not reproduce it. The successful two-full-context profile is also research-only. [Incident and evidence](docs/benchmarks/parallel260k-20260925.md#three-full-contexts-host-freeze).
 
-| Test | Result |
-|---|---|
-| Real **260028-token input**, 262144-position pool | **790.92 prefill / 36.63 decode tok/s**, 32 output tokens |
-| Short MTP prompt in the same run | 409.09 prefill / 44.30 decode tok/s, 540 input / 28 output |
-| Three simultaneous smaller requests | 3 × (8212 input + 128 output), all answers validated |
-| Three full 260k contexts | **Failed guarded startup capacity test**, no token-rate result |
-| Full original upstream serving suite, older profile | 60 responses; **41.20 MTP decode tok/s mean** |
+## Best measured results
 
-Different workloads, not directly comparable averages. The new 260k result is one synthetic repeated-filler qualification sample with short output, not a long-context quality/soak guarantee. The historical 60-response suite used a different memory profile. Cold/warm samples, aborted starts, memory pressure and timing boundaries are retained in the [detailed report](docs/benchmarks/preflight-20260925.md) and [historical suite](docs/benchmarks/upstream-20260924.md).
+Ryzen AI Max+ 395 / Radeon 8060S, Windows 11 + WSL2, pinned Halogen 0.13.8. Rates are tokens/second. These are completed samples, not sustained guarantees.
 
-**Experimental research release:** exact engine/dependency hashes, one qualified memory profile, foreground supervision. The serving window is deliberately bounded to **30–300 seconds after readiness**. This is not yet an always-on server. See [release qualification](docs/release-qualification.md) before installing.
+| Test | Actual input → output | Prefill | Decode |
+|---|---|---:|---:|
+| Highest completed 260k prefill sample | 260028 → 32 | **790.92** | 36.63, whole answer |
+| Highest measured solo decode window | 260042 → 2048 | 763.73 | **66.55** over a fixed 20 s; **64.60** whole answer |
+| Two full contexts, generating together | 260041 → 2048 **each** | 756.84 / 759.65 | **25.45 each / 50.90 combined**, same 20 s |
+| Three full contexts | No requests started | — | **Host freeze** |
 
-## Why this exists / project family
+The pair processed **524178 total tokens**, with both full context states verified. Its combined decode was **23.5% below** the same-run solo baseline: concurrency worked, but did not improve throughput. The predictable long-output workload had very high speculative acceptance; it is not a quality benchmark. Shorter-output and failed runs remain in the [full report and raw evidence](docs/benchmarks/parallel260k-20260925.md). The [earlier 60-response suite](docs/benchmarks/upstream-20260924.md) averaged **41.20 MTP decode tok/s**; three smaller 8k clients also completed.
 
-We use a local Qwen worker alongside cloud models in our ChatGPT/Codex desktop workflow on the same computer. The optional [Codex Local Model Router](https://github.com/MKM-030/codex-local-model-router) connects compatible local servers to the desktop model picker. It stays separate: this repository runs inference; the router integrates clients. It does not run the hosted ChatGPT service locally or reproduce every hosted feature.
+### Alongside Halogen and pwilkin
 
-| Repository | Backend | Scope |
-|---|---|---|
-| [strix-alloy](https://github.com/MKM-030/strix-alloy) | Native Windows HIP / llama.cpp | PROJFIX GGUF + compatible MTP draft sidecar |
-| **strix-alloy-wsl2** | Windows + WSL2 + DXG + Halogen Flash | HGN checkpoint + quality overlay; this integration |
-| [codex-local-model-router](https://github.com/MKM-030/codex-local-model-router) | Client integration | Optional local-worker selection |
+**Different workloads, precision and timing methods—not an apples-to-apples ranking.** External rows are publisher-reported; no speedup ratio is claimed.
 
-We retain the native repository name to avoid breaking links; `strix-alloy-windows` can be considered separately. These are different engines/formats, not kernels switchable by one flag. The historical Halogen 27B server is a separate upstream product and **not a qualified launcher profile here yet**. Running both large backends simultaneously is not qualified. No REV-N dependency is required.
+| Backend | Test conditions | Prefill | Decode |
+|---|---|---:|---:|
+| [Halogen, native Linux](https://github.com/peonist-ai/halogen-flash-server#measured) | 258794 input / 64 output, 1M/YaRN configuration | 1114 | 45.0 |
+| [pwilkin / ilintar, native Linux](https://pwilkin.github.io/strix-halo/) | Separate depth-zero pp16384 / tg128, serial means | 1204.31 ± 2.31 | 26.28 ± 0.29 |
+| [Strix Alloy / PROJFIX, native Windows](https://github.com/MKM-030/strix-alloy/blob/main/docs/benchmarks/engine-comparison.md) | Separate 16k prefill / 259-token warm MTP test | 1031 | 45.31 median |
+| **This WSL2 adaptation** | 260042 input / 2048 output, synthetic text | **763.73** | **64.60 whole answer** |
 
-## How it runs under WSL2
+Halogen also publishes **56.3 tok/s** for a shorter coding-agent workload with MTP + prompt lookup. Text, output length and speculation matter; our highest sample does not establish a faster engine. [Comparison details](docs/benchmarks/parallel260k-20260925.md#native-halogen-comparison).
 
-1. Windows keeps its signed AMD display driver. WSL2 exposes `/dev/dxg`, Windows `libdxcore`, and a byte-qualified ROCm DXG library.
-2. Models live on **native WSL Ext4**, not directly on `/mnt/c` NTFS. A private copy-on-write mapping adapter permits GPU registration without modifying checkpoint files; binds remain read-only.
-3. A hybrid adapter copies selected whole weight ranges to HIP device allocations and registers the remainder. Clean file-cache pages are reclaimed only after a verified independent copy.
-4. The pinned engine's preflight otherwise charges all trunk weights against host RAM before that placement exists. A hash-gated, process-local bridge substitutes the planner's actual host demand at one audited instruction. **Real available memory, the original 16 GiB floor and comparison remain intact.** Every actual placement must match the plan; mismatches fail closed.
-5. Windows-side startup/runtime guards and exact-container cleanup supervise each bounded run. No fake VRAM count or fake `MemAvailable` is used.
+## Install and use Halogen
 
-Our contribution is the adaptation, setup, supervision and measurements. Peonist supplies the engine/kernels. The engine file on disk is unchanged; the opt-in bridge changes one instruction in that process's memory. **No installed AMD driver binary was patched, firmware flashed, or Secure Boot disabled for this working profile.**
+Required: **128 GiB Strix Halo**, supported **64 GiB VGM carve**, Windows 11, Ubuntu 24.04 in WSL2, Docker Engine inside that distro, PowerShell 7, Windows Python 3.12+, WSL GCC and OpenSSL development headers. Tested driver: AMD **32.0.31041.1004 / Adrenalin 26.8.1**. WSL ceiling: **56GB**, 24 processors, 32GB swap. Models must be on **native WSL Ext4**, not `/mnt/c`.
 
-Halogen's ~47.7 GiB N-Gram table is already disk-backed. Adding llama.cpp's `--lazy-mode on` is not another 47.7 GiB saving here. The quality overlay also improves draft projections; it is **not interchangeable** with llama.cpp's MTP draft GGUF. MTP is useful for solo requests, but our concurrent schedule mostly ran with the speculative head off.
-
-## Requirements and settings
-
-A measured profile, not a universal hardware preset:
-
-| Component | Qualified configuration |
-|---|---|
-| Hardware | Ryzen AI Max+ 395, Radeon 8060S/gfx1151, 128 GiB physical |
-| Windows / driver | Windows 11 build 26200.7462; AMD 32.0.31041.1004 / Adrenalin 26.8.1 |
-| BIOS on test machine | AMI 3.10; board-specific, not an update recommendation |
-| Supported VGM carve | **64 GiB**; Windows sees 68340748288 B (~63.65 GiB) |
-| WSL | Ubuntu 24.04; memory **56GB**, 24 processors, 32GB swap |
-| WSL reclaim | `autoMemoryReclaim=gradual`, `sparseVhd=true` |
-| Storage | Native WSL Ext4 for HGN files and tokenizer assets |
-| Tools | GCC 13.3 and Ubuntu `libssl-dev` (OpenSSL development headers) in WSL, Python 3.12+ on Windows, PowerShell 7, Docker Engine in selected WSL distro |
-| Dependencies | Pinned official Halogen 0.13.8 image, exact AMD DXG library, Windows `libdxcore` |
-| Runtime | Copy cap 48 GiB; prefill block/arena 2048; overlay on; prompt cache off |
-
-Use only your device's supported BIOS/AMD Software VGM control. Save the previous value and know your recovery procedure; a carve change requires a reboot. Setup does **not** change BIOS, drivers, registry, services, WSL settings, pagefile or security settings. Do not copy the native sibling's 96 GiB carve recommendation or native Linux's minimal-carve advice into this WSL profile.
-
-Example manually reviewed `%USERPROFILE%\.wslconfig`:
-
-```ini
-[wsl2]
-memory=56GB
-processors=24
-swap=32GB
-localhostForwarding=true
-[experimental]
-autoMemoryReclaim=gradual
-sparseVhd=true
-```
-
-Applying WSL settings requires stopping its workloads first. Do not shut down an unrelated active session. Unknown configurations are not silently accepted.
-
-## Setup and use
-
-Obtain the official model, matching overlay and tokenizer under their own terms from [Halogen Flash](https://github.com/peonist-ai/halogen-flash-server), on native WSL storage. Install prerequisites yourself; setup does not install OS packages or implicitly download a 124 GB model.
-
-Working DXG bytes are reproducible from an [official AMD wheel](https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-linux_x86_64.whl). Supply its downloaded Windows path using `-AmdWheel`, or a matching existing Linux library using `-DxgLibrary`. See [dependency hashes](docs/benchmarks/methodology.md#working-dependency-provenance). Do not replace system libraries or install the entire wheel just for this file.
-
-In PowerShell 7 from the cloned repository, replace example paths:
+Follow the [setup guide](docs/setup.md) for BIOS/driver settings, prerequisites, model files and the pinned AMD DXG library. Setup does not configure Windows/WSL or download the model for you. Then, in PowerShell 7:
 
 ```powershell
-# Read-only preflight: no build, model start or configuration write.
-.\Install.ps1 -Distribution Ubuntu-24.04 -ModelDirectory /srv/models/flash-next `
-  -DxgLibrary /opt/rocm/lib/librocdxg.so.1
+git clone https://github.com/MKM-030/strix-alloy-wsl2.git
+cd strix-alloy-wsl2
 
-# Explicit local build/configuration with the same verified inputs.
-.\Install.ps1 -Install -Distribution Ubuntu-24.04 -ModelDirectory /srv/models/flash-next `
-  -DxgLibrary /opt/rocm/lib/librocdxg.so.1
+# Replace both example paths. First command checks; second builds/installs.
+.\Install.ps1 -Distribution Ubuntu-24.04 -ModelDirectory /srv/models/flash-next -DxgLibrary /opt/rocm/lib/librocdxg.so.1
+.\Install.ps1 -Install -Distribution Ubuntu-24.04 -ModelDirectory /srv/models/flash-next -DxgLibrary /opt/rocm/lib/librocdxg.so.1
 
-# Bounded real-answer checks; one model run at a time.
 .\Start.ps1 -Profile Single32k
-.\Start.ps1 -Profile Single256k
-.\Start.ps1 -Profile Sessions32k
-
-# Foreground local API; stops 300 seconds after readiness.
 .\Start.ps1 -Profile Serve32k -ServeSeconds 300
 ```
 
-Model size/filesystem checks are the default. For a first independent model
-identity check, add `-VerifyModelHash` to the explicit `-Install` command; hashing
-the full checkpoint can take substantial I/O time. It is not repeated on every
-start. Exact adapter/build/environment and DXG hashes remain mandatory.
+OpenAI-compatible API: **`http://127.0.0.1:8731/v1`**. Keep the launcher open; serving stops **30–300 seconds after readiness**. Loopback-only, unauthenticated: do not expose it to your network. `Single256k` runs a bounded large-context check, not an always-on 256k API. `Sessions32k` checks smaller parallel requests. [Usage, rollback and qualification limits](docs/setup.md#use-and-remove).
 
-API: `http://127.0.0.1:8731/v1`, loopback-only and unauthenticated. Do not expose it to a network. Keep the supervising window open. `Serve32k` has one slot and a 32768-position pool; `Single256k` qualifies the larger context but is not an always-on 256k service. `Trace32k` validates placement demand without large weight allocation: it is **not inference success**.
+## Other backend / 27B
 
-Machine paths, generated binaries and logs stay in ignored local outputs. Stop the foreground launcher before running `Uninstall.ps1`; it targets only manifest-owned generated files, never models, WSL, Docker or drivers. See [rollback/validation](docs/release-qualification.md).
+For **native Windows HIP / llama.cpp**, use the separate [Strix Alloy release and launcher](https://github.com/MKM-030/strix-alloy): PROJFIX GGUF shards plus a matching MTP sidecar, API on port 8826. That is the same Flash Next model on another runtime, with different settings—not a Halogen switch. Keep the projects separate; do not run both large backends together.
 
-## Benchmarks: comparison, not a leaderboard
+The earlier **27B WSL experiment** is **not a supported installer/profile in this release**. [Backend setup and limits](docs/setup.md#native-windows-alternative-and-27b-status). The optional [local-model router](https://github.com/MKM-030/codex-local-model-router) connects a local worker to our ChatGPT/Codex desktop workflow; it is not required for inference.
 
-Different weights, prompt lengths, cache states and timing boundaries: **non-equivalent workloads**. PROJFIX is a quantization, not an engine.
+## Memory and what changed
 
-| Path | Workload | Prefill tok/s | Decode tok/s |
-|---|---|---:|---:|
-| pwilkin / ilintar, Linux | Publisher pp16384 / separate tg128 | 1204.31 ± 2.31 | 26.28 ± 0.29, serial |
-| Strix Alloy / PROJFIX, native Windows | Historical served 16k; separate depth ladder | 1031 at 16k | 31.0–32.8 MTP across 16k–251904 |
-| Strix Alloy / PROJFIX, native Windows | Historical 259-token prompt | Not paired | 45.31 warm MTP median |
-| WSL2 + Halogen, older profile | Original 60-response suite | Short prompts; not headline prefill | 41.20 MTP mean |
-| WSL2 + Halogen, older profile | Original HTTP size sweep | 782.58 at 8185 / 769.84 at 16393 | Different timing boundary |
-| WSL2 + Halogen, current profile | 260028 input / 32 output, one sample | **790.920** | **36.626 MTP** |
-| Historical 27B WSL experiment | 5 input / 32 output, old runtime | Not qualified | 9.4 serial / 10.3 MTP / 17.1 DFlash2 |
+The working path combines a ROCm/DXG bridge, private copy-on-write mappings, hybrid GPU/host weight placement and a hash-gated **process-local** preflight adaptation. **No installed AMD driver binary was patched, no firmware flashed, no Secure Boot disabled.** This is not a 120 GB VRAM unlock.
 
-Sources: [native comparison](https://github.com/MKM-030/strix-alloy/blob/main/docs/benchmarks/engine-comparison.md), [pwilkin's notes](https://pwilkin.github.io/strix-halo/), [all original-suite records](docs/benchmarks/upstream-20260924.md), [new responses and timings](docs/benchmarks/preflight-20260925.md). The 27B row is historical, not a requalified backend.
+Completed weight operations total **73.01 GB payload**. The two-full-context run peaked at **100.29 GB adapter-wide GPU accounting**, with at least **18.86 GB Windows available** in samples. These overlapping counters are **not exact model residency** and must not be added together. Halogen's N-Gram table is already disk-backed. [Memory/methodology](docs/benchmarks/parallel260k-20260925.md).
 
-Three smaller clients delivered **384 output tokens in 39.421 s**: 9.741 aggregate output tok/s **including prefill**, with 24636 cumulative input, 25020 combined. Two clients: 256 output in 30.846 s, 8.299 aggregate tok/s. These are not pure decode throughput or three clients each sustaining the solo rate.
+The owner reports **9 GB Windows idle usage** and a responsive desktop during successful runs. Gaming alongside this WSL profile is untested; the three-context freeze shows the limits. [Community tuning notes](docs/benchmarks/community-tuning-notes.md).
 
-## RAM left for Windows
-
-Completed weight operations: **50.433 GB copied + 22.574 GB host-registered = 73.007 GB payload**. At 256k, rounded engine weights + KV + workspace total **79.0 GiB**. Sampled adapter-wide dedicated + shared peak: **92.429 GB**, not precise model residency or proof of 120 GB capacity.
-
-Windows available bottomed at **26.031 GB (24.243 GiB)** during the successful large test, recovering to about 55–58 GB after stop. Margin over the 24 GiB runtime floor was only ~0.261 GB. Three full contexts crossed the 20 GiB startup stop trigger and briefly reached **19.228 GB** free during cleanup, then recovered. Guards are reaction thresholds, not hard reservations. Do not weaken them to advertise a bigger pool.
-
-The owner's earlier Task Manager snapshot—51.5/95.6 system, 31.8 dedicated, 47.5 shared—belongs to the **older 32 GiB carve**. Those overlap, not independent memory banks to add. We retain bytes and distinguish GB from GiB.
-
-The owner reports a fluid Windows desktop. League of Legends was smooth on an earlier configuration; gaming alongside this WSL profile has **not** been tested. No FPS/latency guarantee is claimed.
-
-## Licensing, credits and next work
-
-Only our adapter sources, scripts, profiles, tests and sanitized evidence are distributed. No modified upstream image, proprietary engine/kernel, AMD binary, model weight or private machine dump. The engine stays under [its EULA](https://github.com/peonist-ai/halogen-flash-server/blob/main/LICENSE.md); [trademark policy](https://github.com/peonist-ai/halogen-flash-server/blob/main/TRADEMARKS.md) is separate. Our original code uses [MIT](LICENSE); see [notices](THIRD_PARTY_NOTICES.md).
-
-Next: repeated full-depth benchmarks, sustained guarded service, memory/layout optimization, larger concurrency, and a separately qualified 27B integration. **The larger performance/memory goal is not complete.** WSL extension issues belong here, not as implied upstream support requests.
-
-Credits: [Peonist AI](https://github.com/peonist-ai/halogen-flash-server), [Qwen](https://github.com/QwenLM), [ROCm / TheRock](https://github.com/ROCm/TheRock), Microsoft's WSL/DXG stack, CIRU runtime work, and [pwilkin / ilintar](https://github.com/pwilkin/llama.cpp/tree/strix-halo).
+Our original code is [MIT](LICENSE). Engine, AMD libraries and weights are obtained separately under their own terms; no proprietary binaries are redistributed. Credits: [Peonist AI](https://github.com/peonist-ai/halogen-flash-server), Qwen, ROCm/TheRock, Microsoft WSL/DXG, CIRU and pwilkin/ilintar. [Notices](THIRD_PARTY_NOTICES.md) · [Release qualification](docs/release-qualification.md).
